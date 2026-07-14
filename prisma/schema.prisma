@@ -1,0 +1,213 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id           String        @id @default(uuid())
+  email        String        @unique
+  username     String?
+  avatarUrl    String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  
+  // Relations
+  documents    Document[]
+  chats        Chat[]
+  flashcardSets FlashcardSet[]
+  quizzes      Quiz[]
+  notes        Note[]
+  studyPlans   StudyPlan[]
+  tasks        Task[]
+  statistics   UserStats?
+  activityLogs ActivityLog[]
+  userAnswers  UserAnswer[]
+}
+
+model Document {
+  id           String          @id @default(uuid())
+  userId       String
+  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name         String
+  url          String?
+  type         String          // pdf, docx, txt, md, pptx
+  content      String          // full text content extracted
+  size         Int?
+  createdAt    DateTime        @default(now())
+  
+  // Relations
+  embeddings   Embedding[]
+  chats        Chat[]
+  flashcardSets FlashcardSet[]
+  quizzes      Quiz[]
+  notes        Note[]
+}
+
+model Embedding {
+  id           String    @id @default(uuid())
+  documentId   String
+  document     Document  @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  content      String
+  pageNumber   Int?
+  vector       Float[]   // Array of floats representing the embedding vector
+  createdAt    DateTime  @default(now())
+}
+
+model Chat {
+  id         String     @id @default(uuid())
+  userId     String
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title      String
+  documentId String?    // Nullable if the chat is global
+  document   Document?  @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  createdAt  DateTime   @default(now())
+  
+  // Relations
+  messages   Message[]
+}
+
+model Message {
+  id        String   @id @default(uuid())
+  chatId    String
+  chat      Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  role      String   // user or assistant
+  content   String
+  sources   Json?    // list of source documents reference chunks [{ documentId, name, pageNumber, snippet }]
+  createdAt DateTime @default(now())
+}
+
+model FlashcardSet {
+  id          String      @id @default(uuid())
+  userId      String
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  documentId  String?
+  document    Document?   @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  createdAt   DateTime    @default(now())
+  
+  // Relations
+  flashcards  Flashcard[]
+}
+
+model Flashcard {
+  id           String       @id @default(uuid())
+  setId        String
+  set          FlashcardSet @relation(fields: [setId], references: [id], onDelete: Cascade)
+  front        String
+  back         String
+  isFavorite   Boolean      @default(false)
+  studiedCount Int          @default(0)
+  lastStudied  DateTime?
+  createdAt    DateTime     @default(now())
+}
+
+model Quiz {
+  id             String     @id @default(uuid())
+  userId         String
+  user           User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title          String
+  difficulty     String     // easy, medium, hard
+  documentId     String?
+  document       Document?  @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  score          Int?       // actual score when completed
+  totalQuestions Int        @default(0)
+  createdAt      DateTime   @default(now())
+  
+  // Relations
+  questions      Question[]
+}
+
+model Question {
+  id            String       @id @default(uuid())
+  quizId        String
+  quiz          Quiz         @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  type          String       // MCQ (Multiple Choice), TF (True/False), FIB (Fill in Blank), SA (Short Answer)
+  text          String
+  options       String[]     // MCQ choices
+  correctAnswer String
+  explanation   String?
+  createdAt     DateTime     @default(now())
+  
+  // Relations
+  userAnswers   UserAnswer[]
+}
+
+model UserAnswer {
+  id         String   @id @default(uuid())
+  questionId String
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  answer     String
+  isCorrect  Boolean
+  createdAt  DateTime @default(now())
+}
+
+model Note {
+  id         String    @id @default(uuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title      String
+  content    String    // Markdown text
+  summary    Json?     // { shortSummary, detailedSummary, bulletPoints, keyConcepts }
+  documentId String?
+  document   Document? @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+}
+
+model StudyPlan {
+  id           String      @id @default(uuid())
+  userId       String
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title        String
+  examDate     DateTime?
+  difficulty   String
+  hoursPerWeek Int         @default(5)
+  subjects     String[]
+  createdAt    DateTime    @default(now())
+  
+  // Relations
+  tasks        Task[]
+}
+
+model Task {
+  id          String     @id @default(uuid())
+  userId      String
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  studyPlanId String?
+  studyPlan   StudyPlan? @relation(fields: [studyPlanId], references: [id], onDelete: SetNull)
+  title       String
+  description String?
+  dueDate     DateTime?
+  isCompleted Boolean    @default(false)
+  createdAt   DateTime   @default(now())
+}
+
+model UserStats {
+  id                String    @id @default(uuid())
+  userId            String    @unique
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  streakDays        Int       @default(0)
+  lastStudyDate     DateTime?
+  totalStudyHours   Float     @default(0.0)
+  flashcardsCreated Int       @default(0)
+  quizzesCompleted  Int       @default(0)
+  documentsUploaded Int       @default(0)
+  achievements      String[]  // array of unlocked badges e.g., ["first_upload", "streak_3", "perfect_quiz"]
+  updatedAt         DateTime  @updatedAt
+}
+
+model ActivityLog {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  activity  String   // e.g., "Created note", "Completed quiz", "Uploaded document"
+  details   String?
+  createdAt DateTime @default(now())
+}
